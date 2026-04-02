@@ -1,0 +1,35 @@
+{
+  "expo": {
+    "name": "AstroChat",
+    "slug": "astrochat",
+    "version": "1.0.0",
+    "sdkVersion": "54.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": false,
+    "splash": {
+      "backgroundColor": "#4F46E5"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.astrochat.app"
+    },
+    "android": {
+      "package": "com.astrochat.app",
+      "adaptiveIcon": {
+        "backgroundColor": "#4F46E5"
+      }
+    },
+    "extra": {
+      "apiUrl": "https://astrochat-api.onrender.com"
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "AstroChat needs access to your photos to share birth charts."
+        }
+      ]
+    ]
+  }
+}
