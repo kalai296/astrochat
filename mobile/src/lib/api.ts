@@ -1,9 +1,7 @@
 import axios from 'axios';
 import * as SecureStore from 'expo-secure-store';
 
-// Hardcoded for reliability — update this once backend is deployed to Render
 const BASE_URL = 'https://astrochat-api.onrender.com';
-
 export { BASE_URL };
 
 const api = axios.create({ baseURL: BASE_URL });
