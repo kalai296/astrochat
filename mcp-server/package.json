@@ -1,6 +1,6 @@
 {
   "name": "astrochat-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server for AstroChat — manage users, sessions, messages and stats via AI tools",
   "main": "dist/index.js",
   "bin": {
