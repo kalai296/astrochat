@@ -1,0 +1,46 @@
+{
+  "name": "astrochat-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for AstroChat — manage users, sessions, messages and stats via AI tools",
+  "main": "dist/index.js",
+  "bin": {
+    "astrochat-mcp": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node src/index.ts",
+    "start": "node dist/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "mcp",
+    "astrochat",
+    "astrology",
+    "model-context-protocol",
+    "claude",
+    "ai-tools"
+  ],
+  "author": "kalai296",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kalai296/astrochat.git"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "axios": "^1.6.2",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ]
+}

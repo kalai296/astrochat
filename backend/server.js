@@ -49,7 +49,7 @@ const MessageSchema = new mongoose.Schema({
   senderId:   { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   senderName: { type: String },
   type:       { type: String, enum: ['text','image','file','voice'], default: 'text' },
-  content:    { type: String },       // text content or cloudinary URL
+  content:    { type: String },
   fileUrl:    { type: String },
   fileName:   { type: String },
   createdAt:  { type: Date, default: Date.now },
@@ -101,36 +101,27 @@ const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
 //  REST Routes
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Health check
 app.get('/', (_, res) => res.json({ status: 'AstroChat API running' }));
 
-// ── Register ──────────────────────────────────────────────────────────────────
 app.post('/api/auth/register', async (req, res) => {
   try {
     const { fullName, email, phone, password, gender,
             dateOfBirth, timeOfBirth, placeOfBirth, role } = req.body;
-
     if (!fullName || !email || !password)
       return res.status(400).json({ error: 'fullName, email and password are required' });
-
     const exists = await User.findOne({ email });
     if (exists) return res.status(409).json({ error: 'Email already registered' });
-
     const hash = await bcrypt.hash(password, 10);
     const user = await User.create({
       fullName, email, phone, password: hash,
       gender, dateOfBirth, timeOfBirth, placeOfBirth,
       role: role || 'user',
     });
-
     const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
     res.status(201).json({ token, user: sanitize(user) });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Login ─────────────────────────────────────────────────────────────────────
 app.post('/api/auth/login', async (req, res) => {
   try {
     const { email, password } = req.body;
@@ -140,62 +131,48 @@ app.post('/api/auth/login', async (req, res) => {
     if (!ok) return res.status(401).json({ error: 'Invalid password' });
     const token = jwt.sign({ id: user._id, role: user.role }, JWT_SECRET, { expiresIn: '30d' });
     res.json({ token, user: sanitize(user) });
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Get current user profile ──────────────────────────────────────────────────
 app.get('/api/me', authMiddleware, async (req, res) => {
   const user = await User.findById(req.user.id);
   if (!user) return res.status(404).json({ error: 'Not found' });
   res.json(sanitize(user));
 });
 
-// ── Get astrologer profile ────────────────────────────────────────────────────
 app.get('/api/astrologer', async (_, res) => {
   const a = await User.findOne({ role: 'astrologer' });
   if (!a) return res.status(404).json({ error: 'No astrologer registered yet' });
   res.json(sanitize(a));
 });
 
-// ── Create session request ────────────────────────────────────────────────────
 app.post('/api/sessions', authMiddleware, async (req, res) => {
   try {
     const { astrologerId, type } = req.body;
-    const session = await Session.create({
-      userId: req.user.id, astrologerId, type: type || 'chat',
-    });
+    const session = await Session.create({ userId: req.user.id, astrologerId, type: type || 'chat' });
     io.to('astrologer_room').emit('new_session_request', {
-      sessionId: session._id,
-      type:      session.type,
-      userId:    req.user.id,
+      sessionId: session._id, type: session.type, userId: req.user.id,
     });
     res.status(201).json(session);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Get session history ───────────────────────────────────────────────────────
 app.get('/api/sessions', authMiddleware, async (req, res) => {
   const q = req.user.role === 'astrologer'
     ? { astrologerId: req.user.id }
     : { userId:       req.user.id };
   const sessions = await Session.find(q)
     .sort({ createdAt: -1 }).limit(50)
-    .populate('userId', 'fullName email')
+    .populate('userId',       'fullName email dateOfBirth timeOfBirth placeOfBirth gender')
     .populate('astrologerId', 'fullName');
   res.json(sessions);
 });
 
-// ── Accept / end session (astrologer) ────────────────────────────────────────
 app.patch('/api/sessions/:id', authMiddleware, async (req, res) => {
   try {
     const { status } = req.body;
     const session = await Session.findById(req.params.id);
     if (!session) return res.status(404).json({ error: 'Session not found' });
-
     if (status === 'active')  session.startedAt = new Date();
     if (status === 'ended') {
       session.endedAt      = new Date();
@@ -204,111 +181,97 @@ app.patch('/api/sessions/:id', authMiddleware, async (req, res) => {
     }
     session.status = status;
     await session.save();
-
     io.to(session._id.toString()).emit('session_status', { status });
     res.json(session);
-  } catch (e) {
-    res.status(500).json({ error: e.message });
-  }
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// ── Get messages for a session ────────────────────────────────────────────────
 app.get('/api/sessions/:id/messages', authMiddleware, async (req, res) => {
   const msgs = await Message.find({ sessionId: req.params.id })
     .sort({ createdAt: 1 }).limit(200);
   res.json(msgs);
 });
 
-// ── Upload file / image ───────────────────────────────────────────────────────
 app.post('/api/upload', authMiddleware, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
-  res.json({
-    url:          req.file.path,
-    originalName: req.file.originalname,
-    resourceType: req.file.resource_type,
-  });
+  res.json({ url: req.file.path, originalName: req.file.originalname, resourceType: req.file.resource_type });
 });
 
-// ── Agora token endpoint (RTC token for video/voice) ──────────────────────────
-// NOTE: install  agora-token  npm package and uncomment when you have App ID + Certificate
-// const { RtcTokenBuilder, RtcRole } = require('agora-token');
-// app.post('/api/agora-token', authMiddleware, (req, res) => {
-//   const { channelName, uid } = req.body;
-//   const expiry = Math.floor(Date.now() / 1000) + 3600;
-//   const token  = RtcTokenBuilder.buildTokenWithUid(
-//     process.env.AGORA_APP_ID, process.env.AGORA_APP_CERTIFICATE,
-//     channelName, uid, RtcRole.PUBLISHER, expiry
-//   );
-//   res.json({ token });
-// });
+// ── Send message via REST (MCP tool support) ──────────────────────────────────
+app.post('/api/messages', authMiddleware, async (req, res) => {
+  try {
+    const { sessionId, content, type = 'text', fileUrl, fileName } = req.body;
+    if (!sessionId || !content) return res.status(400).json({ error: 'sessionId and content required' });
+    const user = await User.findById(req.user.id);
+    const msg  = await Message.create({
+      sessionId, senderId: req.user.id,
+      senderName: user?.fullName || 'Unknown',
+      type, content, fileUrl, fileName,
+    });
+    io.to(sessionId).emit('new_message', msg);
+    res.status(201).json(msg);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Socket.IO — Real-time chat
+//  Admin routes — used by MCP server
 // ─────────────────────────────────────────────────────────────────────────────
-const onlineUsers = new Map(); // socketId → userId
+app.get('/api/admin/users', async (_, res) => {
+  try {
+    const users = await User.find({}).sort({ createdAt: -1 });
+    res.json(users.map(sanitize));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/sessions', async (_, res) => {
+  try {
+    const sessions = await Session.find({})
+      .sort({ createdAt: -1 })
+      .populate('userId',       'fullName email dateOfBirth timeOfBirth placeOfBirth gender')
+      .populate('astrologerId', 'fullName email');
+    res.json(sessions);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/admin/messages', async (_, res) => {
+  try {
+    const messages = await Message.find({}).sort({ createdAt: -1 }).limit(500);
+    res.json(messages);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Socket.IO
+// ─────────────────────────────────────────────────────────────────────────────
+const onlineUsers = new Map();
 
 io.use((socket, next) => {
   const token = socket.handshake.auth?.token;
   if (!token) return next(new Error('No token'));
-  try {
-    socket.user = jwt.verify(token, JWT_SECRET);
-    next();
-  } catch {
-    next(new Error('Invalid token'));
-  }
+  try { socket.user = jwt.verify(token, JWT_SECRET); next(); }
+  catch { next(new Error('Invalid token')); }
 });
 
 io.on('connection', (socket) => {
   const { id: userId, role } = socket.user;
   onlineUsers.set(socket.id, userId);
-  console.log(`Connected: ${userId} (${role})`);
-
   if (role === 'astrologer') socket.join('astrologer_room');
 
-  // Join a session room
-  socket.on('join_session', ({ sessionId }) => {
-    socket.join(sessionId);
-    socket.emit('joined', { sessionId });
-  });
+  socket.on('join_session',  ({ sessionId }) => { socket.join(sessionId); socket.emit('joined', { sessionId }); });
+  socket.on('typing',        ({ sessionId, isTyping }) => socket.to(sessionId).emit('typing', { userId, isTyping }));
+  socket.on('call_request',  ({ sessionId, type })   => socket.to(sessionId).emit('incoming_call', { from: userId, type, sessionId }));
+  socket.on('call_accepted', ({ sessionId })          => socket.to(sessionId).emit('call_accepted', { sessionId }));
+  socket.on('call_rejected', ({ sessionId })          => socket.to(sessionId).emit('call_rejected', { sessionId }));
+  socket.on('call_ended',    ({ sessionId })          => socket.to(sessionId).emit('call_ended',    { sessionId }));
+  socket.on('disconnect',    ()                       => onlineUsers.delete(socket.id));
 
-  // Send a text message
   socket.on('send_message', async (data) => {
     const { sessionId, content, type = 'text', fileUrl, fileName } = data;
     try {
       const user = await User.findById(userId);
-      const msg  = await Message.create({
-        sessionId, senderId: userId,
-        senderName: user?.fullName || 'Unknown',
-        type, content, fileUrl, fileName,
-      });
+      const msg  = await Message.create({ sessionId, senderId: userId, senderName: user?.fullName || 'Unknown', type, content, fileUrl, fileName });
       io.to(sessionId).emit('new_message', msg);
-    } catch (e) {
-      socket.emit('error', { message: e.message });
-    }
-  });
-
-  // Typing indicator
-  socket.on('typing', ({ sessionId, isTyping }) => {
-    socket.to(sessionId).emit('typing', { userId, isTyping });
-  });
-
-  // Video/voice call signalling (WebRTC via Agora channel name)
-  socket.on('call_request', ({ sessionId, type }) => {
-    socket.to(sessionId).emit('incoming_call', { from: userId, type, sessionId });
-  });
-  socket.on('call_accepted', ({ sessionId }) => {
-    socket.to(sessionId).emit('call_accepted', { sessionId });
-  });
-  socket.on('call_rejected', ({ sessionId }) => {
-    socket.to(sessionId).emit('call_rejected', { sessionId });
-  });
-  socket.on('call_ended', ({ sessionId }) => {
-    socket.to(sessionId).emit('call_ended', { sessionId });
-  });
-
-  socket.on('disconnect', () => {
-    onlineUsers.delete(socket.id);
-    console.log(`Disconnected: ${userId}`);
+    } catch (e) { socket.emit('error', { message: e.message }); }
   });
 });
 
