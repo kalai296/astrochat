@@ -1,7 +1,11 @@
 import axios from 'axios';
 
+// Hardcoded for reliability — NEXT_PUBLIC_ vars are baked at build time
+// and can silently fail if env is not set correctly on Vercel
+const BASE_URL = 'https://astrochat-api.onrender.com';
+
 const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000',
+  baseURL: BASE_URL,
 });
 
 api.interceptors.request.use((config) => {

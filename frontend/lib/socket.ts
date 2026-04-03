@@ -1,10 +1,13 @@
 import { io, Socket } from 'socket.io-client';
 
+// Hardcoded for reliability — same as api.ts
+const BASE_URL = 'https://astrochat-api.onrender.com';
+
 let socket: Socket | null = null;
 
 export const getSocket = (token: string): Socket => {
   if (!socket) {
-    socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000', {
+    socket = io(BASE_URL, {
       auth: { token },
       transports: ['websocket'],
     });
